@@ -5,7 +5,7 @@ function Get-RegistryEntries {
 
     while ($stack.Count -gt 0) {
         $item = $stack[0]
-        $stack = if ($stack.Count -gt 1) { $stack[1..($stack.Count - 1)] } else { @() }
+        $stack = $stack[1..($stack.Count - 1)]
 
         if ($item.Registry) {
             $item.Registry.properties
@@ -17,12 +17,9 @@ function Get-RegistryEntries {
     }
 }
 
-# Output file (timestamped)
-$OutputFile = "GPO_Registry_Audit_$(Get-Date -Format yyyyMMdd_HHmmss).csv"
+$AllGPOs = Get-GPO -All
 
-Write-Host "Scanning GPOs... this may take a moment..." -ForegroundColor Cyan
-
-$Results = Get-GPO -All | ForEach-Object -Parallel {
+$AllGPOs | ForEach-Object -Parallel {
 
     $gpo = $_
 
@@ -37,25 +34,6 @@ $Results = Get-GPO -All | ForEach-Object -Parallel {
 
             if (-not $Registry) { continue }
 
-            function Get-RegistryEntries {
-                param ($Collection)
-
-                $stack = @($Collection)
-
-                while ($stack.Count -gt 0) {
-                    $item = $stack[0]
-                    $stack = if ($stack.Count -gt 1) { $stack[1..($stack.Count - 1)] } else { @() }
-
-                    if ($item.Registry) {
-                        $item.Registry.properties
-                    }
-
-                    if ($item.Collection) {
-                        $stack += $item.Collection
-                    }
-                }
-            }
-
             $regentries = Get-RegistryEntries $Registry.FirstChild.RegistrySettings
 
             foreach ($reg in $regentries) {
@@ -66,8 +44,7 @@ $Results = Get-GPO -All | ForEach-Object -Parallel {
                         GPO       = $gpo.DisplayName
                         Scope     = $cn.name
                         Action    = $reg.action
-                        Hive      = $reg.hive
-                        Key       = $reg.key
+                        Path      = "$($reg.hive)\$($reg.key)"
                         Name      = $reg.name
                         Type      = $reg.type
                         Value     = $reg.value
@@ -81,10 +58,3 @@ $Results = Get-GPO -All | ForEach-Object -Parallel {
     }
 
 } -ThrottleLimit 8
-
-# Export automatically
-$Results | Export-Csv $OutputFile -NoTypeInformation -Encoding UTF8
-
-Write-Host ""
-Write-Host "Done!" -ForegroundColor Green
-Write-Host "Results exported to: $OutputFile" -ForegroundColor Yellow
