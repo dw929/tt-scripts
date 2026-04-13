@@ -5,7 +5,7 @@ function Get-RegistryEntries {
 
     while ($stack.Count -gt 0) {
         $item = $stack[0]
-        $stack = $stack[1..($stack.Count - 1)]
+        $stack = if ($stack.Count -gt 1) { $stack[1..($stack.Count - 1)] } else { @() }
 
         if ($item.Registry) {
             $item.Registry.properties
@@ -17,11 +17,12 @@ function Get-RegistryEntries {
     }
 }
 
-$AllGPOs = Get-GPO -All
+# Output file
+$OutputFile = "GPO_Registry_Audit_$(Get-Date -Format yyyyMMdd_HHmmss).csv"
 
-$AllGPOs | ForEach-Object -Parallel {
+Write-Host "Scanning GPOs..." -ForegroundColor Cyan
 
-    $gpo = $_
+$Results = foreach ($gpo in Get-GPO -All) {
 
     try {
         [xml]$xmlgpo = $gpo | Get-GPOReport -ReportType XML
@@ -41,13 +42,14 @@ $AllGPOs | ForEach-Object -Parallel {
                 if ([string]::IsNullOrEmpty($reg.type)) {
 
                     [PSCustomObject]@{
-                        GPO       = $gpo.DisplayName
-                        Scope     = $cn.name
-                        Action    = $reg.action
-                        Path      = "$($reg.hive)\$($reg.key)"
-                        Name      = $reg.name
-                        Type      = $reg.type
-                        Value     = $reg.value
+                        GPO    = $gpo.DisplayName
+                        Scope  = $cn.name
+                        Action = $reg.action
+                        Hive   = $reg.hive
+                        Key    = $reg.key
+                        Name   = $reg.name
+                        Type   = $reg.type
+                        Value  = $reg.value
                     }
                 }
             }
@@ -56,5 +58,11 @@ $AllGPOs | ForEach-Object -Parallel {
     catch {
         Write-Warning "Failed processing $($gpo.DisplayName)"
     }
+}
 
-} -ThrottleLimit 8
+# Export CSV
+$Results | Export-Csv $OutputFile -NoTypeInformation -Encoding UTF8
+
+Write-Host ""
+Write-Host "Done!" -ForegroundColor Green
+Write-Host "Results exported to: $OutputFile" -ForegroundColor Yellow
