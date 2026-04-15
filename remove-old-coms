@@ -1,0 +1,41 @@
+Import-Module ActiveDirectory
+
+# Settings
+$DaysInactive = 180
+$Time = (Get-Date).AddDays(-$DaysInactive)
+$ExportPath = "C:\Temp\InactiveComputers_$(Get-Date -Format yyyy-MM-dd).csv"
+
+# Get inactive computers
+$Computers = Get-ADComputer -Filter {LastLogonDate -lt $Time} `
+    -Properties LastLogonDate, Description, OperatingSystem, DistinguishedName
+
+# Export first (safety step)
+$Computers | 
+Select-Object Name, LastLogonDate, Description, OperatingSystem, DistinguishedName |
+Sort-Object LastLogonDate |
+Export-Csv $ExportPath -NoTypeInformation
+
+Write-Host "Export completed:" $ExportPath
+Write-Host "Starting description updates..."
+
+# Update descriptions
+foreach ($Computer in $Computers) {
+
+    if ($Computer.LastLogonDate) {
+
+        # Format date
+        $LastLogonFormatted = $Computer.LastLogonDate.ToString("yyyy-MM-dd")
+
+        # Remove previous LastLogon entry if exists
+        $NewDescription = $Computer.Description -replace "LastLogon: \d{4}-\d{2}-\d{2}", ""
+
+        # Append new value
+        $NewDescription = ($NewDescription + " LastLogon: $LastLogonFormatted").Trim()
+
+        # Update AD (remove -WhatIf when ready)
+        Set-ADComputer -Identity $Computer `
+            -Description $NewDescription -WhatIf
+
+        Write-Host "Updated:" $Computer.Name "->" $LastLogonFormatted
+    }
+}
